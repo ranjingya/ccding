@@ -13,9 +13,9 @@ from __future__ import annotations
 import json
 import sys
 
-# 完成正文清洗参数
-_MAX_LINES = 5
-_MAX_CHARS = 1500
+# 完成正文清洗参数：完成通知只需简短摘要，取前几行、截短
+_MAX_LINES = 3
+_MAX_CHARS = 240
 
 
 def _read_stdin_utf8() -> str:

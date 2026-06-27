@@ -34,8 +34,8 @@ class FeishuChannel:
 
     @property
     def ready(self) -> bool:
-        """三要素是否齐备（app_id/app_secret/receive_id）。"""
-        return self._config.feishu_ready
+        """飞书通道是否可用：开关开启且三要素齐备（app_id/app_secret/receive_id）。"""
+        return self._config.feishu_enabled and self._config.feishu_ready
 
     def _build_client(self):
         """惰性创建并缓存 lark Client（内部自动管理 tenant_access_token）。"""
@@ -141,7 +141,16 @@ class FeishuChannel:
                     decision,
                     getattr(data.event.operator, "open_id", None),
                 )
-                return P2CardActionTriggerResponse({"toast": {"type": "success", "content": content}})
+                # 同一回调里回写卡片：按钮区换成已同意/已拒绝（须在 ~3s 内返回）
+                return P2CardActionTriggerResponse(
+                    {
+                        "toast": {
+                            "type": "success" if decision == APPROVE else "info",
+                            "content": content,
+                        },
+                        "card": {"type": "raw", "data": cards.build_resolved_card(title, body, decision)},
+                    }
+                )
             return P2CardActionTriggerResponse({"toast": {"type": "warning", "content": "未知操作"}})
 
         event_handler = (

@@ -201,6 +201,9 @@ def get_notifier(config: Config) -> Notifier:
     返回值：
         对应平台的 Notifier 实例。
     """
+    if not config.desktop_enabled:
+        logger.info("桌面通知已关闭（CCDING_DESKTOP_ENABLED=false）→ 使用 NullNotifier")
+        return NullNotifier()
     plat = get_platform()
     if plat == "win":
         logger.info("使用 WindowsNotifier（AUMID=%s）", config.win_aumid)

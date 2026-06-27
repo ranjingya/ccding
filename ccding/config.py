@@ -53,6 +53,8 @@ class Config:
     receive_id_type: str
     approval_timeout: int
     win_aumid: str
+    feishu_enabled: bool
+    desktop_enabled: bool
     edit_tools: set[str]
     readonly_tools: set[str]
     always_allow: set[str]
@@ -121,6 +123,14 @@ def _split_env(name: str, default: set[str]) -> set[str]:
     return {item.strip() for item in raw.split(",") if item.strip()}
 
 
+def _bool_env(name: str, default: bool = True) -> bool:
+    """读取布尔环境变量，缺省/留空用 default；true/1/yes/on（不分大小写）为真。"""
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
 def load_config() -> Config:
     """加载运行期配置。
 
@@ -150,13 +160,17 @@ def load_config() -> Config:
         receive_id_type=_get("FEISHU_RECEIVE_ID_TYPE") or "open_id",
         approval_timeout=timeout,
         win_aumid=_get("WIN_AUMID") or DEFAULT_WIN_AUMID,
+        feishu_enabled=_bool_env("CCDING_FEISHU_ENABLED", True),
+        desktop_enabled=_bool_env("CCDING_DESKTOP_ENABLED", True),
         edit_tools=_split_env("CCDING_EDIT_TOOLS", DEFAULT_EDIT_TOOLS),
         readonly_tools=_split_env("CCDING_READONLY_TOOLS", DEFAULT_READONLY_TOOLS),
         always_allow=_split_env("CCDING_ALWAYS_ALLOW", set()),
     )
     logger.info(
-        "配置加载完成：feishu_ready=%s receive_id_type=%s timeout=%ss aumid=%s",
+        "配置加载完成：feishu_ready=%s feishu_enabled=%s desktop_enabled=%s receive_id_type=%s timeout=%ss aumid=%s",
         config.feishu_ready,
+        config.feishu_enabled,
+        config.desktop_enabled,
         config.receive_id_type,
         config.approval_timeout,
         config.win_aumid,

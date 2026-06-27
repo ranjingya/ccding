@@ -33,17 +33,37 @@ import ccding.scripts.register_win_aumid, ccding.scripts.setup_feishu
 check("import all modules", True)
 
 # 2) 卡片
+def find_buttons(node):
+    """递归找出卡片里所有 button（按钮现嵌在 column_set/column 内）。"""
+    out = []
+    if isinstance(node, dict):
+        if node.get("tag") == "button":
+            out.append(node)
+        for v in node.values():
+            out.extend(find_buttons(v))
+    elif isinstance(node, list):
+        for x in node:
+            out.extend(find_buttons(x))
+    return out
+
 ac = ccding.cards.build_approval_card("proj · Bash", "rm -rf /tmp/x", "req123")
 json.dumps(ac)
-btns = [e for e in ac["body"]["elements"] if e.get("tag") == "button"]
+btns = find_buttons(ac)
 vals = [b["behaviors"][0]["value"] for b in btns]
 check("approval card: 2 callback buttons w/ req_id+decision",
       len(btns) == 2 and all(v["req_id"] == "req123" for v in vals)
       and {v["decision"] for v in vals} == {"approve", "deny"})
+check("approval card: 命令在 markdown 代码块",
+      any(e.get("tag") == "markdown" and e.get("content", "").startswith("```")
+          for e in ac["body"]["elements"]))
+rc = ccding.cards.build_resolved_card("proj · Bash", "rm -rf /tmp/x", "approve")
+json.dumps(rc)
+check("resolved card: 无按钮 + 已同意状态",
+      not find_buttons(rc) and rc["body"]["elements"][-1]["content"].endswith("已同意**")
+      and rc["header"]["template"] == "green")
 cc = ccding.cards.build_completion_card("proj · 已完成", "done")
 json.dumps(cc)
-check("completion card: no buttons",
-      not any(e.get("tag") == "button" for e in cc["body"]["elements"]))
+check("completion card: no buttons", not find_buttons(cc))
 
 # 3) 权限闸门
 from ccding.gate import need_approval
