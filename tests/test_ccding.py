@@ -57,6 +57,24 @@ check("approval card: 命令在 markdown 代码块",
       any(e.get("tag") == "markdown" and e.get("content", "").startswith("```")
           for e in ac["body"]["elements"]))
 
+def find_tag(node, tag):
+    out = []
+    if isinstance(node, dict):
+        if node.get("tag") == tag:
+            out.append(node)
+        for v in node.values():
+            out.extend(find_tag(v, tag))
+    elif isinstance(node, list):
+        for x in node:
+            out.extend(find_tag(x, tag))
+    return out
+
+check("approval card: form + instruction 输入框",
+      len(find_tag(ac, "form")) == 1
+      and any(i.get("name") == "instruction" for i in find_tag(ac, "input")))
+check("approval card: 提交按钮 form_action_type=submit",
+      len(btns) == 2 and all(b.get("form_action_type") == "submit" for b in btns))
+
 rc = ccding.cards.build_resolved_card("proj · Bash", "rm -rf /tmp/x", "approve", "记得备份")
 json.dumps(rc)
 check("resolved card: 无按钮 + 含指示",

@@ -37,12 +37,15 @@ def _code_block(text: str) -> str:
 
 
 def _button(text: str, decision: str, req_id: str, btn_type: str) -> dict:
-    """构造一个 callback 按钮，value 透传 {req_id, decision} 回长连接 handler。
+    """构造一个表单提交按钮，点击时连同输入框一起提交并回调。
 
-    width=fill 让按钮撑满所在列，否则按钮只占文字宽度、列虽均分仍偏左一小块。
+    schema 2.0 表单提交按钮须有唯一 name + form_action_type="submit"（v1 的 action_type=form_submit 在 2.0 会校验失败）。
+    behaviors.callback.value 透传 {req_id, decision} 回长连接 handler；width=fill 让按钮撑满所在列。
     """
     return {
         "tag": "button",
+        "name": f"btn_{decision}",  # 同一表单内 name 须唯一
+        "form_action_type": "submit",  # schema 2.0 表单提交按钮的正确字段
         "text": {"tag": "plain_text", "content": text},
         "type": btn_type,
         "width": "fill",
@@ -95,7 +98,27 @@ def build_approval_card(title: str, body: str, req_id: str) -> dict:
         "body": {
             "elements": [
                 {"tag": "markdown", "content": _code_block(_truncate(body, MAX_BODY))},
-                _button_row(req_id),
+                {
+                    # 输入框与提交按钮须同处一个 form，点按钮时一起提交，回调才拿得到输入文字
+                    "tag": "form",
+                    "name": f"form_{req_id}",
+                    "elements": [
+                        # 按钮在上、补充指示在下；二者同处一个 form，点按钮即收输入，顺序不影响取值
+                        _button_row(req_id),
+                        {
+                            "tag": "input",
+                            "name": INSTRUCTION_FIELD,
+                            "width": "fill",  # 撑满整行，否则默认窄宽、右边空着
+                            "required": False,
+                            "max_length": 1000,
+                            # 不用单独的 label 占行，提示并入 placeholder
+                            "placeholder": {
+                                "tag": "plain_text",
+                                "content": "补充指示（可选）：拒绝时填这里告诉 Claude 怎么改",
+                            },
+                        },
+                    ],
+                },
             ]
         },
     }
