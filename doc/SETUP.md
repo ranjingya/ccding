@@ -14,11 +14,13 @@ uv 会按 `.python-version` 拉取 Python 3.14，并装好 `lark-oapi` 等依赖
 
 1. 打开[飞书开放平台](https://open.feishu.cn/) → 开发者后台 → **创建企业自建应用**。
 2. **添加应用能力 → 机器人**（启用机器人）。
-3. **权限管理**：开通 `im:message:send_as_bot`（以应用身份发消息）。
+3. **权限管理**，开通：
+   - `im:message:send_as_bot`（以应用身份发消息，**常驻必需**）；
+   - `im:message.p2p_msg:readonly`（接收用户发给机器人的单聊消息，**仅用于第 4 步拿 open_id**，拿到后可取消）。
 4. **事件与回调 → 订阅方式**：选择「**使用长连接接收事件**」，然后订阅：
    - `card.action.trigger`（卡片按钮回调，**常驻必需**）；
    - `im.message.receive_v1`（接收消息，**仅用于第 4 步拿 open_id**，拿到后可取消）。
-5. **版本管理与发布**：创建版本并发布，确保应用对你自己可见。
+5. **版本管理与发布**：创建版本并发布，确保应用对你自己可见。**权限或事件改动后都必须重新创建并发布新版本才生效**——只在后台改而不发版本，看着配好了实际不推送。
 6. 到 **凭证与基础信息** 抄下 **App ID** 和 **App Secret**。
 
 ## 3. 填写 .env
@@ -44,7 +46,6 @@ FEISHU_RECEIVE_ID_TYPE=open_id
 
 > 也可以建一个含机器人的群，用群的 `chat_id`（`oc_...`）并设 `FEISHU_RECEIVE_ID_TYPE=chat_id`。
 
-拿到后，第 2 步里订阅的 `im.message.receive_v1` 可以取消（只保留 `card.action.trigger`）。
 
 ## 5.（仅 Windows）注册 AUMID
 
