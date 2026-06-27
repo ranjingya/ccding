@@ -56,10 +56,11 @@ check("approval card: 2 callback buttons w/ req_id+decision",
 check("approval card: 命令在 markdown 代码块",
       any(e.get("tag") == "markdown" and e.get("content", "").startswith("```")
           for e in ac["body"]["elements"]))
-rc = ccding.cards.build_resolved_card("proj · Bash", "rm -rf /tmp/x", "approve")
+
+rc = ccding.cards.build_resolved_card("proj · Bash", "rm -rf /tmp/x", "approve", "记得备份")
 json.dumps(rc)
-check("resolved card: 无按钮 + 已同意状态",
-      not find_buttons(rc) and rc["body"]["elements"][-1]["content"].endswith("已同意**")
+check("resolved card: 无按钮 + 含指示",
+      not find_buttons(rc) and "记得备份" in rc["body"]["elements"][-1]["content"]
       and rc["header"]["template"] == "green")
 cc = ccding.cards.build_completion_card("proj · 已完成", "done")
 json.dumps(cc)
@@ -101,21 +102,21 @@ check("stop _clean_message filters # & blanks",
       stopmod._clean_message("# 标题\n\n第一行\n第二行\n") == "第一行 第二行")
 check("stop _clean_message empty -> 任务完成", stopmod._clean_message("") == "任务完成")
 
-# 7) 授权编排：无渠道快速 None
+# 7) 授权编排：无渠道快速 (None, "")
 from ccding.desktop import NullNotifier
 class _Unready:
     ready = False
-    def request_approval(self, *a, **k): return None
+    def request_approval(self, *a, **k): return None, ""
 t0 = time.monotonic()
 r = ccding.approval.request_approval(NullNotifier(), _Unready(), "t", "b", "rid", timeout=2)
-check("approval no channels -> None fast", r is None and time.monotonic() - t0 < 1.5)
+check("approval no channels -> (None, '') fast", r == (None, "") and time.monotonic() - t0 < 1.5)
 
-# 8) 钩子决策映射（打桩规避真实 UI）
-def run_pre(stdin_obj, fg=None, decision="__none__"):
+# 8) 钩子决策映射（打桩规避真实 UI）；request_approval 现返回 (decision, note)
+def run_pre(stdin_obj, fg=None, decision="__none__", note=""):
     if fg is not None:
         ccding.focus.is_claude_foreground = (lambda: fg)
     if decision != "__none__":
-        ccding.approval.request_approval = (lambda *a, **k: decision)
+        ccding.approval.request_approval = (lambda *a, **k: (decision, note))
     oi, oo, oe = sys.stdin, sys.stdout, sys.stderr
     out = io.StringIO()
     try:
@@ -125,16 +126,21 @@ def run_pre(stdin_obj, fg=None, decision="__none__"):
         cap = out.getvalue(); sys.stdin, sys.stdout, sys.stderr = oi, oo, oe
     return cap
 
-def decision_of(s):
-    return json.loads(s)["hookSpecificOutput"]["permissionDecision"]
+def hso(s):
+    return json.loads(s)["hookSpecificOutput"]
 
 base = {"tool_name": "Bash", "permission_mode": "default", "tool_input": {"command": "ls"}}
-check("foreground -> ask", decision_of(run_pre(base, fg=True)) == "ask")
-check("approve -> allow", decision_of(run_pre(base, fg=False, decision="approve")) == "allow")
-check("deny -> deny", decision_of(run_pre(base, fg=False, decision="deny")) == "deny")
-check("timeout -> ask", decision_of(run_pre(base, fg=False, decision=None)) == "ask")
+check("foreground -> ask", hso(run_pre(base, fg=True))["permissionDecision"] == "ask")
+check("approve -> allow", hso(run_pre(base, fg=False, decision="approve"))["permissionDecision"] == "allow")
+check("deny -> deny", hso(run_pre(base, fg=False, decision="deny"))["permissionDecision"] == "deny")
+check("timeout -> ask", hso(run_pre(base, fg=False, decision=None))["permissionDecision"] == "ask")
 check("bypass -> empty stdout",
       run_pre({"tool_name": "Bash", "permission_mode": "bypassPermissions", "tool_input": {}}) == "")
+# 补充指示：拒绝时进 reason、同意时进 additionalContext
+d = hso(run_pre(base, fg=False, decision="deny", note="改用 git rm --cached"))
+check("deny+指示 -> reason 携带指示", d["permissionDecisionReason"] == "改用 git rm --cached")
+a = hso(run_pre(base, fg=False, decision="approve", note="记得先备份"))
+check("approve+指示 -> additionalContext", a.get("additionalContext") == "记得先备份")
 
 # 9) 子进程：cwd 无关性 + UTF-8 中文 stdin（像 Claude 一样喂 UTF-8 字节）
 def sub(stdin_obj, level="ERROR"):

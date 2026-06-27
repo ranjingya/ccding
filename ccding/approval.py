@@ -24,7 +24,9 @@ class FeishuChannel(Protocol):
 
     ready: bool
 
-    def request_approval(self, title: str, body: str, req_id: str, timeout: float) -> str | None:
+    def request_approval(
+        self, title: str, body: str, req_id: str, timeout: float
+    ) -> tuple[str | None, str]:
         ...
 
 
@@ -35,13 +37,13 @@ def request_approval(
     body: str,
     req_id: str,
     timeout: float,
-) -> str | None:
-    """并行向飞书与桌面发起授权请求，返回最先到达的决策。
+) -> tuple[str | None, str]:
+    """并行向飞书与桌面发起授权请求，返回最先到达的（决策, 补充指示）。
 
     功能说明：
         为飞书与桌面各起一个守护线程阻塞等待用户点击，结果投入线程安全队列；主线程在总超时内
         取第一个有效决策（APPROVE/DENY）即返回；某渠道提前返回 None（不可用/放弃）不影响继续等待
-        其它渠道；全部未决则超时返回 None。
+        其它渠道；全部未决则超时返回 (None, "")。补充指示目前仅飞书渠道可能带回（桌面恒为空串）。
     参数：
         notifier: 桌面通知器（可为 None / NullNotifier）。
         feishu_channel: 飞书渠道（需 .ready 为真才参与）。
@@ -50,29 +52,31 @@ def request_approval(
         req_id: 本次请求唯一标识，用于飞书卡片回调匹配。
         timeout: 总等待上限秒数。
     返回值：
-        APPROVE / DENY；超时或无可用渠道返回 None。
+        (decision, instruction)：decision 为 APPROVE/DENY，instruction 为用户输入指示（可空）；
+        超时或无可用渠道返回 (None, "")。
     """
-    result_queue: "queue.Queue[tuple[str | None, str]]" = queue.Queue()
-    workers: list[tuple[str, Callable[[], str | None]]] = []
+    result_queue: "queue.Queue[tuple[str | None, str, str]]" = queue.Queue()
+    # 各渠道统一返回 (decision, instruction)：桌面暂不收集输入，补成空串
+    workers: list[tuple[str, Callable[[], tuple[str | None, str]]]] = []
 
     if feishu_channel is not None and getattr(feishu_channel, "ready", False):
         workers.append(
             ("feishu", lambda: feishu_channel.request_approval(title, body, req_id, timeout))
         )
     if notifier is not None:
-        workers.append(("desktop", lambda: notifier.request_approval(title, body, timeout)))
+        workers.append(("desktop", lambda: (notifier.request_approval(title, body, timeout), "")))
 
     if not workers:
         logger.warning("无可用授权渠道（飞书未就绪且无桌面通知器）→ 直接超时回落")
-        return None
+        return None, ""
 
-    def run(name: str, func: Callable[[], str | None]) -> None:
+    def run(name: str, func: Callable[[], tuple[str | None, str]]) -> None:
         try:
-            decision = func()
+            decision, note = func()
         except Exception as exc:  # 单渠道异常不拖垮整体
             logger.warning("[%s] 授权渠道异常：%s", name, exc)
-            decision = None
-        result_queue.put((decision if decision in (APPROVE, DENY) else None, name))
+            decision, note = None, ""
+        result_queue.put((decision if decision in (APPROVE, DENY) else None, note or "", name))
 
     for name, func in workers:
         threading.Thread(target=run, args=(name, func), daemon=True).start()
@@ -85,14 +89,14 @@ def request_approval(
         if remaining <= 0:
             break
         try:
-            decision, via = result_queue.get(timeout=remaining)
+            decision, note, via = result_queue.get(timeout=remaining)
         except queue.Empty:
             break
         pending -= 1
         if decision in (APPROVE, DENY):
-            logger.info("授权结果 via %s：%s", via, decision)
-            return decision
+            logger.info("授权结果 via %s：%s 指示=%r", via, decision, note)
+            return decision, note
         logger.info("[%s] 渠道未决/不可用，继续等待其它渠道（剩余 %s 个）", via, pending)
 
-    logger.info("授权超时或所有渠道未决 → 返回 None（回落终端）")
-    return None
+    logger.info("授权超时或所有渠道未决 → 返回 (None, '')（回落终端）")
+    return None, ""

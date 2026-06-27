@@ -15,6 +15,8 @@ logger = get_logger(__name__)
 # 授权卡正文（命令/参数）最大长度；完成卡正文更短
 MAX_BODY = 1500
 MAX_COMPLETION = 240
+# 授权卡输入框的 name，回调时按此名从 form_value 取「补充指示」文字
+INSTRUCTION_FIELD = "instruction"
 
 
 def _truncate(text: str, limit: int) -> str:
@@ -99,7 +101,7 @@ def build_approval_card(title: str, body: str, req_id: str) -> dict:
     }
 
 
-def build_resolved_card(title: str, body: str, decision: str) -> dict:
+def build_resolved_card(title: str, body: str, decision: str, instruction: str = "") -> dict:
     """构造授权后更新卡片（点击同意/拒绝后回写，按钮区换成状态文本）。
 
     功能说明：
@@ -109,12 +111,16 @@ def build_resolved_card(title: str, body: str, decision: str) -> dict:
         title: 与授权卡相同的标题。
         body: 与授权卡相同的命令/参数摘要。
         decision: APPROVE 或 DENY。
+        instruction: 用户在输入框填的补充指示，非空则附在状态下方展示。
     返回值：
         更新后的卡片 dict。
     """
     approved = decision == APPROVE
     status = "✅ 已同意" if approved else "❌ 已拒绝"
     template = "green" if approved else "red"
+    status_md = f"**{status}**"
+    if instruction:
+        status_md += f"\n\n指示：{instruction}"
     return {
         "schema": "2.0",
         "config": {"update_multi": True},
@@ -122,7 +128,7 @@ def build_resolved_card(title: str, body: str, decision: str) -> dict:
         "body": {
             "elements": [
                 {"tag": "markdown", "content": _code_block(_truncate(body, MAX_BODY))},
-                {"tag": "markdown", "content": f"**{status}**"},
+                {"tag": "markdown", "content": status_md},
             ]
         },
     }

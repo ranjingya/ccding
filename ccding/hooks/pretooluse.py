@@ -31,21 +31,25 @@ def _read_stdin_utf8() -> str:
     return sys.stdin.read()
 
 
-def _decision(decision: str, reason: str) -> dict:
+def _decision(decision: str, reason: str, additional_context: str | None = None) -> dict:
     """构造 PreToolUse 决策输出 JSON。
 
     参数：
         decision: allow / deny / ask（defer 用「不输出」表达）。
-        reason: 决策理由，回灌给 Claude。
+        reason: 决策理由，回灌给 Claude（deny 时即「被拦原因/改法指示」）。
+        additional_context: 可选附加上下文，注入给 Claude（allow 时携带用户补充指示）。
     返回值：符合钩子契约的 dict。
     """
-    return {
+    out: dict = {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "permissionDecision": decision,
             "permissionDecisionReason": reason,
         }
     }
+    if additional_context:
+        out["hookSpecificOutput"]["additionalContext"] = additional_context
+    return out
 
 
 def _build_title_body(data: dict, project: str) -> tuple[str, str]:
@@ -142,15 +146,17 @@ def main() -> int:
     if not channel.ready:
         logger.warning("飞书未配置，本次仅桌面授权（或无可用渠道）")
 
-    decision = request_approval(notifier, channel, title, body, req_id, config.approval_timeout)
+    decision, note = request_approval(notifier, channel, title, body, req_id, config.approval_timeout)
 
-    # 5) 输出决策
+    # 5) 输出决策（note 为用户在卡片输入框填的补充指示，可空）
     if decision == APPROVE:
-        logger.info("远程同意 → allow")
-        emit(_decision("allow", "已远程同意"))
+        logger.info("远程同意 → allow（指示=%r）", note)
+        # 同意时若带指示，作为附加上下文注入给 Claude
+        emit(_decision("allow", "已远程同意", additional_context=(note or None)))
     elif decision == DENY:
-        logger.info("远程拒绝 → deny")
-        emit(_decision("deny", "已远程拒绝"))
+        logger.info("远程拒绝 → deny（指示=%r）", note)
+        # 拒绝时把用户指示作为「被拦原因/改法」回灌；没填则给通用理由
+        emit(_decision("deny", note or "用户在飞书拒绝了该操作"))
     else:
         logger.info("远程授权超时 → ask 回落终端")
         emit(_decision("ask", "远程授权超时，交回终端处理"))

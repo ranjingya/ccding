@@ -25,6 +25,21 @@ logger = get_logger(__name__)
 WS_CONNECT_WAIT = 1.5
 
 
+def _extract_instruction(action) -> str:
+    """从回调 action 取输入框「补充指示」文字。
+
+    表单提交后值在 action.form_value 的 {input_name: 值} 里；SDK 反序列化可能是 dict 或对象，两种都兼容。
+    """
+    form_value = getattr(action, "form_value", None)
+    if not form_value:
+        return ""
+    if isinstance(form_value, dict):
+        text = form_value.get(cards.INSTRUCTION_FIELD, "")
+    else:
+        text = getattr(form_value, cards.INSTRUCTION_FIELD, "")
+    return (text or "").strip()
+
+
 class FeishuChannel:
     """飞书通道：持有配置与惰性创建的 lark Client。"""
 
@@ -100,22 +115,25 @@ class FeishuChannel:
         """发送任务完成通知卡片（无按钮）。"""
         return self.send_card(cards.build_completion_card(title, body))
 
-    def request_approval(self, title: str, body: str, req_id: str, timeout: float) -> str | None:
-        """发授权卡片并临时起长连接收点击，阻塞返回决策。
+    def request_approval(
+        self, title: str, body: str, req_id: str, timeout: float
+    ) -> tuple[str | None, str]:
+        """发授权卡片并临时起长连接收点击，阻塞返回（决策, 补充指示）。
 
         功能说明：
             先在守护线程启动长连接 WS 并注册 card.action.trigger handler（按 req_id 匹配本次），
-            待建连后发送授权卡片，主调用阻塞等待 handler 把决策塞入队列或超时。
+            待建连后发送带输入框的授权卡片，主调用阻塞等待 handler 把（决策, 输入指示）塞入队列或超时。
         参数：
             title: 授权标题（项目名 + 工具名）。
             body: 授权正文（命令/参数摘要）。
             req_id: 本次请求唯一标识，用于回调匹配。
             timeout: 最长等待秒数。
         返回值：
-            APPROVE / DENY；超时、未就绪或发送失败返回 None。
+            (decision, instruction)：decision 为 APPROVE/DENY，instruction 为用户输入的指示（可能为空串）；
+            超时、未就绪或发送失败返回 (None, "")。
         """
         if not self.ready:
-            return None
+            return None, ""
 
         import lark_oapi as lark
         from lark_oapi.event.callback.model.p2_card_action_trigger import (
@@ -126,29 +144,35 @@ class FeishuChannel:
         decision_q: queue.Queue = queue.Queue()
 
         def on_card_action(data: "P2CardActionTrigger") -> "P2CardActionTriggerResponse":
-            """长连接收到按钮点击：匹配 req_id 后取决策入队，3 秒内返回 toast。"""
-            value = getattr(data.event.action, "value", None) or {}
+            """长连接收到按钮点击：匹配 req_id 后取决策与输入指示入队，3 秒内返回更新卡片。"""
+            action = data.event.action
+            value = getattr(action, "value", None) or {}
             if value.get("req_id") != req_id:
                 # 非本次请求（理论上 Claude 串行不会出现），忽略
                 return P2CardActionTriggerResponse({"toast": {"type": "info", "content": "已忽略"}})
             decision = value.get("decision")
+            instruction = _extract_instruction(action)
             if decision in (APPROVE, DENY):
-                decision_q.put(decision)
+                decision_q.put((decision, instruction))
                 content = "已同意" if decision == APPROVE else "已拒绝"
                 logger.info(
-                    "飞书收到点击 req_id=%s decision=%s open_id=%s",
+                    "飞书收到点击 req_id=%s decision=%s 指示=%r open_id=%s",
                     req_id,
                     decision,
+                    instruction,
                     getattr(data.event.operator, "open_id", None),
                 )
-                # 同一回调里回写卡片：按钮区换成已同意/已拒绝（须在 ~3s 内返回）
+                # 同一回调里回写卡片：按钮区换成已同意/已拒绝 + 指示（须在 ~3s 内返回）
                 return P2CardActionTriggerResponse(
                     {
                         "toast": {
                             "type": "success" if decision == APPROVE else "info",
                             "content": content,
                         },
-                        "card": {"type": "raw", "data": cards.build_resolved_card(title, body, decision)},
+                        "card": {
+                            "type": "raw",
+                            "data": cards.build_resolved_card(title, body, decision, instruction),
+                        },
                     }
                 )
             return P2CardActionTriggerResponse({"toast": {"type": "warning", "content": "未知操作"}})
@@ -180,18 +204,18 @@ class FeishuChannel:
 
         if not self.send_card(cards.build_approval_card(title, body, req_id)):
             logger.warning("授权卡片发送失败，飞书渠道放弃本次授权")
-            return None
+            return None, ""
 
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             logger.info("建连/发送已耗尽超时预算，飞书放弃 req_id=%s", req_id)
-            return None
+            return None, ""
         logger.info("授权卡片已发送，等待点击（≤%.1fs）req_id=%s", remaining, req_id)
         try:
             return decision_q.get(timeout=remaining)
         except queue.Empty:
             logger.info("飞书授权超时未点击 req_id=%s", req_id)
-            return None
+            return None, ""
 
 
 def get_channel(config: Config) -> FeishuChannel:
