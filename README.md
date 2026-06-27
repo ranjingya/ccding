@@ -50,7 +50,7 @@ uv run python -m ccding.scripts.register_win_aumid
 # 4. 在 ~/.claude/settings.json 接上钩子（见 SETUP.md）
 ```
 
-详细配置（飞书后台建应用、开权限、订阅事件、接钩子、端到端验证）见 **[SETUP.md](./SETUP.md)**。
+详细配置（飞书后台建应用、开权限、订阅事件、接钩子、端到端验证）见 **[SETUP.md](./doc/SETUP.md)**。
 
 ## 已知局限
 
