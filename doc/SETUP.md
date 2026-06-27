@@ -8,7 +8,7 @@
 uv sync
 ```
 
-uv 会按 `.python-version` 拉取 Python 3.12，并装好 `lark-oapi` 等依赖；`windows-toasts` 仅在 Windows 上安装。
+uv 会按 `.python-version` 拉取 Python 3.14，并装好 `lark-oapi` 等依赖；`windows-toasts` 仅在 Windows 上安装。
 
 ## 2. 飞书后台：创建自定义应用
 
@@ -94,7 +94,7 @@ uv run python -m ccding.scripts.register_win_aumid
 ## 7. 端到端验证
 
 1. **平台识别**：`uv run python -c "from ccding.platform_detect import get_platform; print(get_platform())"`。
-2. **发送**：配好 `.env` 后，写个小脚本调用 `feishu.get_channel(load_config()).send_completion("测试","正文")`，确认手机/手环收到。
+2. **发送**：配好 `.env` 后跑 `uv run python -c "from ccding.config import load_config; from ccding.feishu import get_channel; print(get_channel(load_config()).send_completion('测试','正文'))"`，打印 `True` 且手机/手环收到即正常。
 3. **回调**：在 `acceptEdits` 模式让 Claude 跑一条 `Bash` 命令并**切走窗口** → 手机应收到授权卡片，点「同意」→ Claude 继续。
 4. **不打扰**：让它**编辑文件**（acceptEdits 自动接受）→ 不应被打扰；窗口在前台时触发 → 不应收到通知。
 5. **完成**：任务结束 → 收到完成通知。
