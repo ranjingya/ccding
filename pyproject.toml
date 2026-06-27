@@ -1,0 +1,22 @@
+[project]
+name = "ccding"
+version = "0.1.0"
+description = "Claude Code 远程授权与完成提醒（飞书自定义应用 + 桌面弹窗，无常驻进程）"
+readme = "README.md"
+# 下限 3.10（python-dotenv 1.2.x 要求 >=3.10）；上限排除 3.14（避免依赖刚发布的 3.14-only 二进制轮子）。
+# 开发解释器由 .python-version 钉为 3.12。
+requires-python = ">=3.10,<3.14"
+dependencies = [
+    "lark-oapi>=1.6,<2",      # 纯 Python 轮子，新版已不依赖 protobuf
+    "python-dotenv>=1.0",     # 解析为 1.2.x（要求 >=3.10），读 .env
+    "psutil>=5.9",            # 焦点检测：进程祖先链
+    # 仅 Windows：必须自带 sys_platform 标记，否则非 Windows 会去解析 windows-only 的 winrt-* 而失败
+    "windows-toasts>=1.3 ; sys_platform == 'win32'",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ccding"]
