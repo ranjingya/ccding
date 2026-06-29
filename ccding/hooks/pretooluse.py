@@ -61,9 +61,11 @@ def _build_title_body(data: dict, project: str) -> tuple[str, str]:
     返回值：
         (title, body)。title 为「项目 · 工具」，body 为命令/路径/参数摘要。
     """
+    from ccding.constants import APPROVAL_TITLE_PREFIX
+
     tool = data.get("tool_name", "?")
     tool_input = data.get("tool_input", {}) or {}
-    title = f"{project} · {tool}"
+    title = f"{APPROVAL_TITLE_PREFIX}{project} · {tool}"
 
     if tool == "Bash":
         body = tool_input.get("command", "")

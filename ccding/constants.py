@@ -5,3 +5,7 @@
 
 APPROVE = "approve"
 DENY = "deny"
+
+# 通知标题前缀：放在标题最前，让推送横幅/聊天列表一眼区分「需审批」与「已完成」
+APPROVAL_TITLE_PREFIX = "🔴 需审批 · "
+COMPLETION_TITLE_PREFIX = "✅ 已完成 · "

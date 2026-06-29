@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from .constants import APPROVE, DENY
+from .constants import APPROVAL_TITLE_PREFIX, APPROVE, DENY
 from .log import get_logger
 
 logger = get_logger(__name__)
@@ -141,6 +141,8 @@ def build_resolved_card(title: str, body: str, decision: str, instruction: str =
     approved = decision == APPROVE
     status = "✅ 已同意" if approved else "❌ 已拒绝"
     template = "green" if approved else "red"
+    # 决策后去掉「需审批」前缀，避免已处理的卡仍顶着 🔴 需审批
+    title = title.removeprefix(APPROVAL_TITLE_PREFIX)
     status_md = f"**{status}**"
     if instruction:
         status_md += f"\n\n指示：{instruction}"

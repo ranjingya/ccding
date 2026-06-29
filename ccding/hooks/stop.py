@@ -113,9 +113,11 @@ def main() -> int:
     last_msg = data.get("last_assistant_message")
     if not last_msg:
         last_msg = _extract_last_assistant_text(data.get("transcript_path", ""))
+    from ccding.constants import COMPLETION_TITLE_PREFIX
+
     body = _clean_message(last_msg)
     project = detect_project_name(data.get("cwd"))
-    title = f"{project} · 已完成"
+    title = f"{COMPLETION_TITLE_PREFIX}{project}"
     logger.info("完成通知 title=%s 正文长度=%d", title, len(body))
 
     # 3) 飞书完成卡片 + 桌面纯通知

@@ -148,8 +148,10 @@ class FeishuChannel:
             action = data.event.action
             value = getattr(action, "value", None) or {}
             if value.get("req_id") != req_id:
-                # 非本次请求（理论上 Claude 串行不会出现），忽略
-                return P2CardActionTriggerResponse({"toast": {"type": "info", "content": "已忽略"}})
+                # 点到的是旧卡/别的请求（req_id 对不上）：当前长连接只认本次 req_id
+                return P2CardActionTriggerResponse(
+                    {"toast": {"type": "warning", "content": "该授权已结束或非当前请求，请用最新一张卡"}}
+                )
             decision = value.get("decision")
             instruction = _extract_instruction(action)
             if decision in (APPROVE, DENY):

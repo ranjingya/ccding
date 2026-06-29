@@ -80,6 +80,8 @@ json.dumps(rc)
 check("resolved card: 无按钮 + 含指示",
       not find_buttons(rc) and "记得备份" in rc["body"]["elements"][-1]["content"]
       and rc["header"]["template"] == "green")
+rc2 = ccding.cards.build_resolved_card("🔴 需审批 · proj · Bash", "x", "approve")
+check("resolved card: 去掉需审批前缀", "需审批" not in rc2["header"]["title"]["content"])
 cc = ccding.cards.build_completion_card("proj · 已完成", "done")
 json.dumps(cc)
 check("completion card: no buttons", not find_buttons(cc))
